@@ -5,7 +5,7 @@ module Database.Neo4j.Cypher
     ( Cypher
     , defaultConnectInfo
     , connect
-    , cypher
+    , query
     , runCypher
     , withConnection
     , Entity
@@ -29,17 +29,17 @@ import Data.Aeson.TH
 import Data.Aeson.Types
 import Data.Char (toLower)
 import Data.List (elemIndices)
+import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.Typeable
 import Network.HTTP.Conduit
 import Network.HTTP.Types
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 
 -- | Information about your neo4j configuration needed to make requests over the REST api.
 data ConnectInfo = ConnInfo
-    { connectHost :: B.ByteString
+    { connectHost :: String
     , connectPort :: Int
     } deriving (Show, Eq)
 
@@ -47,7 +47,7 @@ $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 7 } ''ConnectInfo)
 
 data Connection = Connection
-    { connectionInfo :: ConnectInfo
+    { connectionRequest :: Request
     , connectionManager :: Manager }
 
 -- | All interaction with Neo4j is done through the Cypher monad
@@ -125,9 +125,9 @@ $(deriveJSON defaultOptions
 
 -- | A neo4j node or edge
 data Entity a = Entity
-    { entityId :: String -- ^ The Neo4j node or relationship id
+    { entityId :: String -- ^ Neo4j node or relationship id
     , entityProperties :: String
-    , entityData :: a -- ^ The Haskell datatype stored in the Neo4j node or relationship
+    , entityData :: a -- ^ Haskell datatype bound to Neo4j node or relationship
     } deriving (Show)
 
 instance Eq (Entity a) where
@@ -145,47 +145,53 @@ instance ToJSON (Entity a) where
     toJSON a = toJSON (read x :: Int) where
         (_, _:x) = splitAt (last . elemIndices '/' $ entityId a) (entityId a)
 
--- | An error in handling a Cypher query, either in communicating with the server or parsing the result
-data CypherException =
-    CypherServerException Status ResponseHeaders BL.ByteString |
-    CypherClientParseException B.ByteString deriving (Show, Typeable)
+-- | An error in handling a Cypher query either in communicating with the
+-- server, parsing the result, or invalid connection information.
+data CypherException = ServerException Status ResponseHeaders BL.ByteString
+                     | ClientParseException String BL.ByteString
+                     | ConnectionException ConnectInfo
+                     deriving (Show, Typeable)
 
 instance Exception CypherException
 
+-- TODO add SSL support here
 defaultConnectInfo :: ConnectInfo
 defaultConnectInfo = ConnInfo
     { connectHost = "localhost"
     , connectPort = 7474 }
 
-cypher :: FromJSON a => T.Text -> Value -> Cypher a
-cypher query params = Cypher $ do
+query :: FromJSON a => T.Text -> Maybe Value -> Cypher a
+query q p = Cypher $ do
     manager <- asks connectionManager
-    info <- asks connectionInfo
-    req <- liftIO $ parseUrl "http://google.com"
-    let req' = req { host = connectHost info
-            , port = connectPort info
-            , path = "db/data/cypher"
-            , requestBody = RequestBodyLBS . encode $ CypherRequest query params
-            , requestHeaders = (hAccept, "application/json") :
-                               (hContentType, "application/json") :
-                               requestHeaders req
-            , method = "POST" }
+    req <- asks connectionRequest
+    let body = encode . CypherRequest q $ fromMaybe emptyObject p
+        req' = req { path = "db/data/cypher"
+                   , method = "POST"
+                   , requestBody = RequestBodyLBS body }
     res <- liftIO $ httpLbs req' manager
-    case decode $ responseBody res of
-        Nothing -> throw $ CypherServerException (responseStatus res)
-                                                 (responseHeaders res)
-                                                 (responseBody res)
-        Just x -> return x
+    if responseStatus res == status200
+        then
+            case eitherDecode $ responseBody res of
+                Left err -> throw $ ClientParseException err (responseBody res)
+                Right res' -> return res'
+        else throw $ ServerException (responseStatus res)
+                                     (responseHeaders res)
+                                     (responseBody res)
 
 runCypher :: FromJSON a => Connection -> Cypher a -> IO a
-runCypher conn (Cypher query) = runReaderT query conn
+runCypher conn (Cypher q) = runReaderT q conn
 
 connect :: ConnectInfo -> IO Connection
 connect ci = do
     m <- newManager conduitManagerSettings
-    return  Connection
-        { connectionInfo = ci
-        , connectionManager = m }
+    return $ case parseUrl $ connectHost ci ++ ":" ++ show (connectPort ci) of
+        Nothing -> throw $ ConnectionException ci
+        Just r -> Connection
+            { connectionManager = m
+            , connectionRequest =
+                r { requestHeaders = (hAccept, "application/json") :
+                                     (hContentType, "application/json") :
+                                     ("X-Stream", "true") : requestHeaders r }}
 
 withConnection :: FromJSON a => ConnectInfo -> Cypher a -> IO a
 withConnection ci f = do
