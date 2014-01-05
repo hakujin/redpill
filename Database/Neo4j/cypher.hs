@@ -3,197 +3,175 @@
 
 module Database.Neo4j.Cypher
     ( Cypher
-    , defaultConnectInfo
+    , CypherException
+    , Node(..)
+    , Relationship(..)
     , connect
+    , fromCypher
     , query
     , runCypher
-    , withConnection
-    , Entity
-    , CypherResult(..)
-    , CypherException(..)
-    , CypherVal(..)
-    , CypherVals(..)
-    , CypherCol(..)
-    , CypherCols(..)
-    , CypherMaybe(..)
-    , CypherUnit(..)
+    , safeFromCypher
+    , simpleCypher
     ) where
 
 import Control.Applicative
-import Control.Exception hiding (try, throwIO)
-import Control.Monad
+import Control.Exception
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import Data.Aeson
+import Control.Monad.Trans.Maybe
+import Data.Aeson (decode, encode)
 import Data.Aeson.TH
 import Data.Aeson.Types
 import Data.Char (toLower)
-import Data.List (elemIndices)
-import Data.Maybe (fromMaybe)
-import Data.Monoid
+import Data.Monoid (mempty)
+import Data.Text.Encoding (encodeUtf8)
 import Data.Typeable
 import Network.HTTP.Conduit
 import Network.HTTP.Types
+import System.Environment (lookupEnv)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
-
--- | Information about your neo4j configuration needed to make requests over the REST api.
-data ConnectInfo = ConnInfo
-    { connectHost :: String
-    , connectPort :: Int
-    } deriving (Show, Eq)
-
-$(deriveJSON defaultOptions
-    { fieldLabelModifier = map toLower . drop 7 } ''ConnectInfo)
 
 data Connection = Connection
     { connectionRequest :: Request
     , connectionManager :: Manager }
 
 -- | All interaction with Neo4j is done through the Cypher monad
--- Use 'cypher' to add a query to the monad.
+-- Use 'query' to add a query to the monad.
 newtype Cypher a = Cypher (ReaderT Connection IO a)
     deriving (Monad, MonadIO, Functor, Applicative)
 
--- | Raw result data returned by Neo4j. Only use this if you care about column headers.
-data CypherResult a = CypherResult
-    { resultColumns :: [T.Text]
-    , resultData :: a
-    } deriving (Show, Eq)
-
-$(deriveJSON defaultOptions
-    { fieldLabelModifier = map toLower . drop 6 } ''CypherResult)
-
-safeHead :: [a] -> Parser a
-safeHead [a] = return a
-safeHead _ = mzero
-
--- | A single result returned by Neo4j.
-newtype CypherVal a = CypherVal a deriving (Show, Eq)
-
-instance FromJSON a => FromJSON (CypherVal a) where
-    parseJSON x = do
-        CypherResult _ [[d]] <- parseJSON x
-        return $ CypherVal d
-
--- | A single column returned by Neo4j.
-newtype CypherCol a = CypherCol a deriving (Eq, Show)
-
-instance FromJSON a => FromJSON (CypherCol a) where
-    parseJSON x = do
-        CypherResult _ [d] <- parseJSON x
-        return $ CypherCol d
-
--- | Columns returned by Neo4j.
-newtype CypherCols a = CypherCols a deriving (Show, Eq)
-
-instance FromJSON a => FromJSON (CypherCols a) where
-    parseJSON x = do
-        CypherResult _ d <- parseJSON x
-        return $ CypherCols d
-
--- | Values returned by Neo4j.
-newtype CypherVals a = CypherVals [a] deriving (Show, Eq)
-
-instance FromJSON a => FromJSON (CypherVals a) where
-    parseJSON x = do
-        CypherResult _ d <- parseJSON x
-        fmap CypherVals $ mapM safeHead d
-
--- | Possibly a value returned by Neo4j
-data CypherMaybe a = CypherJust a | CypherNothing deriving (Show, Eq)
-
-instance FromJSON a => FromJSON (CypherMaybe a) where
-    parseJSON x = do
-        CypherResult _ ds <- parseJSON x
-        case ds of
-            [[d]] -> return $ CypherJust d
-            _ -> return CypherNothing
-
--- | No value returned from Neo4j
-data CypherUnit = CypherUnit deriving (Show)
-
-instance FromJSON CypherUnit where parseJSON _ = return CypherUnit
-
+-- | Request data to be sent to Neo4j
 data CypherRequest = CypherRequest
-    { requestQuery :: T.Text
-    , requestParams :: Value
+    { _requestQuery :: T.Text
+    , _requestParams :: Value
     } deriving (Show, Eq)
 
 $(deriveJSON defaultOptions
-    { fieldLabelModifier = map toLower . drop 7 } ''CypherRequest)
+    { fieldLabelModifier = map toLower . drop 8 } ''CypherRequest)
 
--- | A neo4j node or edge
-data Entity a = Entity
-    { entityId :: String -- ^ Neo4j node or relationship id
-    , entityProperties :: String
-    , entityData :: a -- ^ Haskell datatype bound to Neo4j node or relationship
-    } deriving (Show)
+-- | Response data returned by Neo4j
+data CypherResponse a = CypherResponse
+    { _resultColumns :: [T.Text]
+    , _resultData :: [[a]]
+    } deriving (Show, Eq)
 
-instance Eq (Entity a) where
-    a == b = entityId a == entityId b
+$(deriveJSON defaultOptions
+    { fieldLabelModifier = map toLower . drop 7 } ''CypherResponse)
 
-instance Ord (Entity a) where
-    compare a b = compare (entityId a) (entityId b)
+data Node a = Node
+    { nodeId :: T.Text
+    , nodeData :: a } deriving (Show, Eq)
 
-instance FromJSON a => FromJSON (Entity a) where
-    parseJSON (Object v) =
-        Entity <$> v .: "self" <*> v .: "properties" <*> v .: "data"
+instance FromJSON a => FromJSON (Node a) where
+    parseJSON (Object n) = do
+        s <- n .: "self"
+        d <- n .: "data"
+        return $ Node (snd $ T.breakOnEnd "/" s) d
     parseJSON _ = mempty
 
-instance ToJSON (Entity a) where
-    toJSON a = toJSON (read x :: Int) where
-        (_, _:x) = splitAt (last . elemIndices '/' $ entityId a) (entityId a)
+data Relationship a = Relationship
+    { relationshipId :: T.Text
+    , relationshipType :: T.Text
+    , relationshipData :: a } deriving (Show, Eq)
 
--- | An error in handling a Cypher query either in communicating with the
--- server, parsing the result, or invalid connection information.
+instance FromJSON a => FromJSON (Relationship a) where
+    parseJSON (Object n) = do
+        s <- n .: "self"
+        t <- n .: "type"
+        d <- n .: "data"
+        return $ Relationship (snd $ T.breakOnEnd "/" s) t d
+    parseJSON _ = mempty
+
 data CypherException = ServerException Status ResponseHeaders BL.ByteString
-                     | ClientParseException String BL.ByteString
-                     | ConnectionException ConnectInfo
+                     | ClientParseException BL.ByteString
+                     | ConnectionException String
                      deriving (Show, Typeable)
 
 instance Exception CypherException
 
--- TODO add SSL support here
-defaultConnectInfo :: ConnectInfo
-defaultConnectInfo = ConnInfo
-    { connectHost = "localhost"
-    , connectPort = 7474 }
+neo4jUserEnv :: String
+neo4jUserEnv = "NEO4J_LOGIN"
 
-query :: FromJSON a => T.Text -> Maybe Value -> Cypher a
-query q p = Cypher $ do
+neo4jPasswordEnv :: String
+neo4jPasswordEnv = "NEO4J_PASSWORD"
+
+unreachable :: String
+unreachable = "The Neo4j server is unreachable."
+
+authenticate :: Request -> IO Request
+authenticate req = do
+    envs <- runMaybeT $ do
+        u <- MaybeT $ lookupEnv neo4jUserEnv
+        p <- MaybeT $ lookupEnv neo4jPasswordEnv
+        return (u, p)
+    case envs of
+        Nothing -> return req
+        Just (user, pass) ->
+            return $ applyBasicAuth user' pass' req
+            where
+                user' = encodeUtf8 $ T.pack user
+                pass' = encodeUtf8 $ T.pack pass
+
+safeFromCypher :: FromJSON a => Value -> Either String a
+safeFromCypher = parseEither parseJSON
+
+fromCypher :: FromJSON a => Value -> a
+fromCypher v =
+    case parseEither parseJSON v of
+        Left err -> error err
+        Right val -> val
+
+query :: T.Text -> Maybe [Pair] -> Cypher [[Value]]
+query cypher params = Cypher $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
-    let body = encode . CypherRequest q $ fromMaybe emptyObject p
+    let body = encode . CypherRequest cypher $
+            case params of
+                Nothing -> emptyObject
+                Just params' -> object $ map (uncurry (.=)) params'
         req' = req { path = "db/data/cypher"
                    , method = "POST"
                    , requestBody = RequestBodyLBS body }
-    res <- liftIO $ httpLbs req' manager
-    if responseStatus res == status200
-        then
-            case eitherDecode $ responseBody res of
-                Left err -> throw $ ClientParseException err (responseBody res)
-                Right res' -> return res'
-        else throw $ ServerException (responseStatus res)
-                                     (responseHeaders res)
-                                     (responseBody res)
+    res <- liftIO . try $ httpLbs req' manager
+    case res of
+        Left (SomeException _) -> throw $ ConnectionException unreachable
+        Right res' -> do
+            let status = responseStatus res'
+                body' = responseBody res'
+            if status == status200 || status == status201
+                then
+                    case decode body' of
+                        Nothing -> throw $ ClientParseException body'
+                        Just (CypherResponse _ d) -> return d
+                else throw $ ServerException status (responseHeaders res') body'
 
+-- | Interact with a Neo4j database specified by the given Connection.
+-- Each call of runCypher takes a network connection from the Connection pool
+-- and may block when all connections from the pool are in use.
 runCypher :: FromJSON a => Connection -> Cypher a -> IO a
 runCypher conn (Cypher q) = runReaderT q conn
 
-connect :: ConnectInfo -> IO Connection
-connect ci = do
+-- | Create a connection pool to the Neo4j server.
+connect :: String -> IO Connection
+connect url = do
     m <- newManager conduitManagerSettings
-    return $ case parseUrl $ connectHost ci ++ ":" ++ show (connectPort ci) of
-        Nothing -> throw $ ConnectionException ci
-        Just r -> Connection
-            { connectionManager = m
-            , connectionRequest =
-                r { requestHeaders = (hAccept, "application/json") :
-                                     (hContentType, "application/json") :
-                                     ("X-Stream", "true") : requestHeaders r }}
+    case parseUrl url of
+        Nothing -> throw $ ConnectionException unreachable
+        Just r -> do
+            r' <- authenticate r
+            return Connection
+                { connectionManager = m
+                , connectionRequest =
+                    r' { checkStatus = \_ _ _ -> Nothing
+                       , requestHeaders = (hAccept, "application/json") :
+                                          (hContentType, "application/json") :
+                                          ("X-Stream", "true") :
+                                          requestHeaders r' }}
 
-withConnection :: FromJSON a => ConnectInfo -> Cypher a -> IO a
-withConnection ci f = do
-    connection <- connect ci
+-- | Run the specified cypher query and return the parsed response body.
+-- This function creates a new connection each time; do not use in production.
+simpleCypher :: String -> Cypher [[Value]] -> IO [[Value]]
+simpleCypher url f = do
+    connection <- connect url
     runCypher connection f

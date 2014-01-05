@@ -24,4 +24,5 @@ library
                        http-types,
                        mtl,
                        text,
-                       transformers
+                       transformers,
+                       vector
