@@ -51,7 +51,7 @@ fromNode = nodeProperties . fromCypher
 fromRelationship :: FromJSON a => Value -> a
 fromRelationship = relationshipProperties . fromCypher
 
-query :: Text -> Maybe [Pair] -> Neo4j (Either ServerError [[Value]])
+query :: Text -> Maybe [Pair] -> Neo4j (Either Neo4jError [[Value]])
 query cypher params = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest

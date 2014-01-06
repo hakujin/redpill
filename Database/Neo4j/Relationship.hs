@@ -59,7 +59,7 @@ $(deriveJSON defaultOptions { omitNothingFields = True }
 
 getRelationship :: FromJSON a
                 => Integer
-                -> Neo4j (Either ServerError (Relationship a))
+                -> Neo4j (Either Neo4jError (Relationship a))
 getRelationship rel = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -72,7 +72,7 @@ createRelationship :: (ToJSON c, FromJSON c)
                    -> Node b -- ^ To
                    -> T.Text -- ^ Type
                    -> Maybe c -- ^ Properties
-                   -> Neo4j (Either ServerError (Relationship c))
+                   -> Neo4j (Either Neo4jError (Relationship c))
 createRelationship from to relType props = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -87,7 +87,7 @@ createRelationship from to relType props = Neo4j $ do
                    , requestBody = RequestBodyLBS body }
     liftIO $ sendRequest req' manager
 
-deleteRelationship :: Integer -> Neo4j (Either ServerError ())
+deleteRelationship :: Integer -> Neo4j (Either Neo4jError ())
 deleteRelationship rel = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest

@@ -1,11 +1,11 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, GeneralizedNewtypeDeriving,
+{-# LANGUAGE OverloadedStrings, GeneralizedNewtypeDeriving,
     DeriveDataTypeable #-}
 
 module Database.Neo4j.Core
     ( Connection(..)
     , Neo4j(..)
     , Neo4jException(..)
-    , ServerError(..)
+    , Neo4jError(..)
     , authenticate
     , connect
     , runNeo4j
@@ -18,14 +18,12 @@ import Control.Exception
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Aeson
-import Data.Aeson.TH
-import Data.Char (toLower)
 import Data.Typeable
 import Network.HTTP.Conduit
 import Network.HTTP.Types
 import System.Environment (lookupEnv)
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
+import qualified Data.Text as T
 
 data Connection = Connection
     { connectionRequest :: Request
@@ -42,13 +40,17 @@ data Neo4jException = ClientParseException
 
 instance Exception Neo4jException
 
+data Neo4jError = Neo4jError
+    T.Text  -- ^ exception
+    T.Text -- ^ message
+    deriving (Show, Eq)
 
-data ServerError = ServerError
-    { serverMessage :: B.ByteString
-    , serverException :: B.ByteString } deriving (Show, Eq)
-
-$(deriveJSON defaultOptions
-    { fieldLabelModifier = map toLower . drop 6 } ''ServerError)
+instance FromJSON Neo4jError where
+    parseJSON (Object e) = do
+        exception <- e .: "exception"
+        message <- e .: "message"
+        return $ Neo4jError exception message
+    parseJSON _ = mzero
 
 neo4jUserEnv :: String
 neo4jUserEnv = "NEO4J_LOGIN"
@@ -56,7 +58,7 @@ neo4jUserEnv = "NEO4J_LOGIN"
 neo4jPasswordEnv :: String
 neo4jPasswordEnv = "NEO4J_PASSWORD"
 
-sendRequest :: FromJSON a => Request -> Manager -> IO (Either ServerError a)
+sendRequest :: FromJSON a => Request -> Manager -> IO (Either Neo4jError a)
 sendRequest request manager = do
     res <- onException (httpLbs request manager)
                        (throw ServerUnreachableException)

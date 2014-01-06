@@ -36,7 +36,7 @@ instance FromJSON a => FromJSON (Node a) where
                 Just (i, _) -> i
     parseJSON _ = mzero
 
-getNode :: FromJSON a => Integer -> Neo4j (Either ServerError (Node a))
+getNode :: FromJSON a => Integer -> Neo4j (Either Neo4jError (Node a))
 getNode node = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -45,7 +45,7 @@ getNode node = Neo4j $ do
 
 createNode :: (ToJSON a, FromJSON a)
            => Maybe a
-           -> Neo4j (Either ServerError (Node a))
+           -> Neo4j (Either Neo4jError (Node a))
 createNode props = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -59,7 +59,7 @@ applyBody r p =
         Nothing -> r
         Just p' -> r { requestBody = RequestBodyLBS $ encode p' }
 
-deleteNode :: Integer -> Neo4j (Either ServerError ())
+deleteNode :: Integer -> Neo4j (Either Neo4jError ())
 deleteNode node = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
