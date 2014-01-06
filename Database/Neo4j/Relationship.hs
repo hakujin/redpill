@@ -31,7 +31,7 @@ instance FromJSON a => FromJSON (Relationship a) where
         d <- r .: "data"
         start <- r .: "start"
         end <- r .: "end"
-        return $ Relationship (getId s) s t d start end
+        return $ Relationship (getId s) s t start end d
         where
             getId :: B.ByteString -> Integer
             getId b = case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
