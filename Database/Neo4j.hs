@@ -14,10 +14,14 @@ module Database.Neo4j
     , Object
     , connect
     , createNode
+    , createRelationship
+    , deleteNode
+    , deleteRelationship
     , fromCypher
     , fromNode
     , fromRelationship
     , getNode
+    , getRelationship
     , query
     , runNeo4j
     , safeFromCypher
