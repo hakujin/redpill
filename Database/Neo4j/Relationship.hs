@@ -68,12 +68,12 @@ getRelationship rel = Neo4j $ do
     liftIO $ sendRequest req' manager
 
 createRelationship :: (ToJSON c, FromJSON c)
-                   => Node a -- ^ To
-                   -> Node b -- ^ From
+                   => Node a -- ^ From
+                   -> Node b -- ^ To
                    -> T.Text -- ^ Type
                    -> Maybe c -- ^ Properties
                    -> Neo4j (Either ServerError (Relationship c))
-createRelationship to from relType props = Neo4j $ do
+createRelationship from to relType props = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let body = encode RelationshipRequest
