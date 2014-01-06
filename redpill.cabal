@@ -1,6 +1,6 @@
 name:                redpill
 version:             0.1.0
-synopsis:            Haskell bindings to the Neo4j Cypher query language
+synopsis:            Haskell bindings to the Neo4j graph database
 license:             BSD3
 license-file:        LICENSE
 author:              Colin King
@@ -14,7 +14,7 @@ source-repository head
   location: git://github.com/hakujin/redpill.git
 
 library
-  exposed-modules:     Database.Neo4j.Cypher
+  exposed-modules:     Database.Neo4j
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall
   build-depends:       base,
@@ -24,5 +24,4 @@ library
                        http-types,
                        mtl,
                        text,
-                       transformers,
-                       vector
+                       transformers
