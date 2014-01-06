@@ -46,10 +46,7 @@ data Neo4jError = Neo4jError
     deriving (Show, Eq)
 
 instance FromJSON Neo4jError where
-    parseJSON (Object e) = do
-        exception <- e .: "exception"
-        message <- e .: "message"
-        return $ Neo4jError exception message
+    parseJSON (Object e) = Neo4jError <$> e .: "exception" <*> e .: "message"
     parseJSON _ = mzero
 
 neo4jUserEnv :: String
