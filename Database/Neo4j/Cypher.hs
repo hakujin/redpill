@@ -46,16 +46,18 @@ safeFromCypher :: FromJSON a => Value -> Either String a
 safeFromCypher = parseEither parseJSON
 
 fromNode :: FromJSON a => Value -> a
-fromNode = nodeData . fromCypher
+fromNode = nodeProperties . fromCypher
 
 fromRelationship :: FromJSON a => Value -> a
-fromRelationship = relationshipData . fromCypher
+fromRelationship = relationshipProperties . fromCypher
 
 query :: Text -> Maybe [Pair] -> Neo4j (Either ServerError [[Value]])
 query cypher params = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
-    let body = encode . CypherRequest cypher $ convertParams params
+    let body = encode CypherRequest
+            { _requestQuery = cypher
+            , _requestParams = convertParams params }
         req' = req { path = "db/data/cypher"
                    , method = "POST"
                    , requestBody = RequestBodyLBS body }

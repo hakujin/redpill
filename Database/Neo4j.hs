@@ -2,13 +2,13 @@ module Database.Neo4j
     ( Connection
     , Neo4j
     , Neo4jException
-    , Node(nodeId, nodeData, nodeSelf)
+    , Node(nodeId, nodeProperties, nodeSelf)
     , Relationship(relationshipId
                   , relationshipSelf
                   , relationshipType
                   , relationshipStart
                   , relationshipEnd
-                  , relationshipData)
+                  , relationshipProperties)
     , Value
     , Object
     , connect
