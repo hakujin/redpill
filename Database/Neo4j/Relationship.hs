@@ -44,9 +44,10 @@ instance FromJSON a => FromJSON (Relationship a) where
             , relationshipProperties = relProps }
         where
             getId :: B.ByteString -> Integer
-            getId b = case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
-                Nothing -> throw ClientParseException
-                Just (i, _) -> i
+            getId b =
+                case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
+                    Nothing -> throw ClientParseException
+                    Just (i, _) -> i
     parseJSON _ = mzero
 
 data RelationshipRequest a = RelationshipRequest
@@ -76,10 +77,9 @@ createRelationship :: (ToJSON c, FromJSON c)
 createRelationship from to relType props = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
-    let body = encode RelationshipRequest
-            { _requestTo = nodeSelf to
-            , _requestType = relType
-            , _requestData = props }
+    let body = encode RelationshipRequest { _requestTo = nodeSelf to
+                                          , _requestType = relType
+                                          , _requestData = props }
         req' = req { path = mconcat ["db/data/node/"
                                     , BC.pack . show $ nodeId from
                                     , "/relationships"]

@@ -55,9 +55,8 @@ query :: Text -> Maybe [Pair] -> Neo4j (Either Neo4jError [[Value]])
 query cypher params = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
-    let body = encode CypherRequest
-            { _requestQuery = cypher
-            , _requestParams = convertParams params }
+    let body = encode CypherRequest { _requestQuery = cypher
+                                    , _requestParams = convertParams params }
         req' = req { path = "db/data/cypher"
                    , method = "POST"
                    , requestBody = RequestBodyLBS body }
@@ -67,7 +66,4 @@ query cypher params = Neo4j $ do
         Right (CypherResponse _ d) -> Right d
 
 convertParams :: Maybe [Pair] -> Value
-convertParams params =
-    case params of
-        Nothing -> emptyObject
-        Just params' -> object params'
+convertParams = maybe emptyObject object

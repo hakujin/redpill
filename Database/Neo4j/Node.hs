@@ -31,9 +31,10 @@ instance FromJSON a => FromJSON (Node a) where
             , nodeProperties = props }
         where
             getId :: B.ByteString -> Integer
-            getId b = case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
-                Nothing -> throw ClientParseException
-                Just (i, _) -> i
+            getId b =
+                case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
+                    Nothing -> throw ClientParseException
+                    Just (i, _) -> i
     parseJSON _ = mzero
 
 getNode :: FromJSON a => Integer -> Neo4j (Either Neo4jError (Node a))
@@ -54,10 +55,7 @@ createNode props = Neo4j $ do
     liftIO $ sendRequest (applyBody req' props) manager
 
 applyBody :: ToJSON a => Request -> Maybe a -> Request
-applyBody r p =
-    case p of
-        Nothing -> r
-        Just p' -> r { requestBody = RequestBodyLBS $ encode p' }
+applyBody r = maybe r (\x -> r { requestBody = RequestBodyLBS $ encode x })
 
 deleteNode :: Integer -> Neo4j (Either Neo4jError ())
 deleteNode node = Neo4j $ do

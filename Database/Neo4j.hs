@@ -11,7 +11,6 @@ module Database.Neo4j
                   , relationshipEnd
                   , relationshipProperties)
     , Value
-    , Object
     , connect
     , createNode
     , createRelationship

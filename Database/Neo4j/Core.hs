@@ -58,19 +58,12 @@ neo4jPasswordEnv = "NEO4J_PASSWORD"
 sendRequest :: FromJSON a => Request -> Manager -> IO (Either Neo4jError a)
 sendRequest request manager = do
     res <- onException (httpLbs request manager)
-                       (throw ServerUnreachableException)
-    let status = responseStatus res
-        code = statusCode status
+                       (throwIO ServerUnreachableException)
+    let code = statusCode $ responseStatus res
         body = responseBody res
     if code >= 200 && code < 300
-        then
-            case decode body of
-                Nothing -> throw ClientParseException
-                Just body' -> return $ Right body'
-        else
-            case decode body of
-                Nothing -> throw ClientParseException
-                Just body' -> return $ Left body'
+        then maybe (throwIO ClientParseException) (return . Right) (decode body)
+        else maybe (throwIO ClientParseException) (return . Left) (decode body)
 
 authenticate :: Request -> IO Request
 authenticate req = do
@@ -96,7 +89,7 @@ runNeo4j conn (Neo4j request) = runReaderT request conn
 connect :: String -> IO Connection
 connect url =
     case parseUrl url of
-        Nothing -> throw InvalidURLException
+        Nothing -> throwIO InvalidURLException
         Just r -> do
             m <- newManager conduitManagerSettings
             r' <- authenticate r
