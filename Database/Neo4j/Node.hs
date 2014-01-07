@@ -16,6 +16,8 @@ import Network.HTTP.Conduit
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 
+-- | A Neo4j node wrapper around a Haskell data type with ToJSON and
+-- FromJSON instances.
 data Node a = Node
     { nodeId :: Integer
     , nodeSelf :: B.ByteString
@@ -37,6 +39,7 @@ instance FromJSON a => FromJSON (Node a) where
                     Just (i, _) -> i
     parseJSON _ = mzero
 
+-- | Fetch a 'Node' by Neo4j node ID.
 getNode :: FromJSON a => Integer -> Neo4j (Either Neo4jError (Node a))
 getNode node = Neo4j $ do
     manager <- asks connectionManager
@@ -44,6 +47,7 @@ getNode node = Neo4j $ do
     let req' = req { path = mconcat ["db/data/node/", BC.pack $ show node] }
     liftIO $ sendRequest req' manager
 
+-- | Create a 'Node' with optional properties.
 createNode :: (ToJSON a, FromJSON a)
            => Maybe a
            -> Neo4j (Either Neo4jError (Node a))
@@ -57,6 +61,7 @@ createNode props = Neo4j $ do
 applyBody :: ToJSON a => Request -> Maybe a -> Request
 applyBody r = maybe r (\x -> r { requestBody = RequestBodyLBS $ encode x })
 
+-- | Delete a 'Node' by Neo4j node ID.
 deleteNode :: Integer -> Neo4j (Either Neo4jError ())
 deleteNode node = Neo4j $ do
     manager <- asks connectionManager

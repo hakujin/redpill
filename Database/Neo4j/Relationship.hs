@@ -20,6 +20,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Text as T
 
+-- | A Neo4j relationship wrapper around a Haskell data type with ToJSON and
+-- FromJSON instances.
 data Relationship a = Relationship
     { relationshipId :: Integer
     , relationshipSelf :: B.ByteString
@@ -58,6 +60,7 @@ data RelationshipRequest a = RelationshipRequest
 $(deriveJSON defaultOptions { omitNothingFields = True }
     { fieldLabelModifier = map toLower . drop 8 } ''RelationshipRequest)
 
+-- | Fetch a 'Relationship' by Neo4j relationship ID.
 getRelationship :: FromJSON a
                 => Integer
                 -> Neo4j (Either Neo4jError (Relationship a))
@@ -68,6 +71,7 @@ getRelationship rel = Neo4j $ do
                                     , BC.pack $ show rel] }
     liftIO $ sendRequest req' manager
 
+-- | Create a 'Relationship' with optional properties.
 createRelationship :: (ToJSON c, FromJSON c)
                    => Node a -- ^ From
                    -> Node b -- ^ To
@@ -87,6 +91,7 @@ createRelationship from to relType props = Neo4j $ do
                    , requestBody = RequestBodyLBS body }
     liftIO $ sendRequest req' manager
 
+-- | Delete a 'Relationship' by Neo4j relationship ID.
 deleteRelationship :: Integer -> Neo4j (Either Neo4jError ())
 deleteRelationship rel = Neo4j $ do
     manager <- asks connectionManager

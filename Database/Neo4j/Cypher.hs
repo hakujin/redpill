@@ -21,7 +21,7 @@ import Database.Neo4j.Relationship
 import Network.HTTP.Conduit
 import Data.Text (Text)
 
--- | Cypher request data to be sent to Neo4j
+-- Cypher request data to be sent to Neo4j
 data CypherRequest = CypherRequest
     { _requestQuery :: Text
     , _requestParams :: Value
@@ -30,7 +30,7 @@ data CypherRequest = CypherRequest
 $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 8 } ''CypherRequest)
 
--- | Cypher response data returned by Neo4j
+-- Cypher response data returned by Neo4j
 data CypherResponse a = CypherResponse
     { _responseColumns :: [Text]
     , _responseData :: [[a]]
@@ -39,18 +39,28 @@ data CypherResponse a = CypherResponse
 $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 9 } ''CypherResponse)
 
+-- | Convert returned cypher data from 'Value' to some instance of FromJSON.
+-- Throws 'ClientParseException' on invalid target.
 fromCypher :: FromJSON a => Value -> a
 fromCypher v = fromMaybe (throw ClientParseException) (parseMaybe parseJSON v)
 
+-- | Convert returned cypher data from 'Value' to some instance of FromJSON.
+-- Returns @Left \"error message\"@ on invalid target.
 safeFromCypher :: FromJSON a => Value -> Either String a
 safeFromCypher = parseEither parseJSON
 
+-- | Convert returned cypher 'Node' properties directly into a Haskell data
+-- type. This is synonymous with @nodeProperties . fromCypher@
 fromNode :: FromJSON a => Value -> a
 fromNode = nodeProperties . fromCypher
 
+-- | Convert returned cypher 'Relationship' properties directly into a Haskell
+-- data type. This is synonymous with @relationshipProperties . fromCypher@
 fromRelationship :: FromJSON a => Value -> a
 fromRelationship = relationshipProperties . fromCypher
 
+-- | Execute a cypher query against the Neo4j database. Use 'fromCypher' or
+-- 'safeFromCypher' to decode returned values into useful types.
 query :: Text -> Maybe [Pair] -> Neo4j (Either Neo4jError [[Value]])
 query cypher params = Neo4j $ do
     manager <- asks connectionManager
@@ -64,6 +74,6 @@ query cypher params = Neo4j $ do
     return $ case res of
         Left err -> Left err
         Right (CypherResponse _ d) -> Right d
-
-convertParams :: Maybe [Pair] -> Value
-convertParams = maybe emptyObject object
+    where
+        convertParams :: Maybe [Pair] -> Value
+        convertParams = maybe emptyObject object
