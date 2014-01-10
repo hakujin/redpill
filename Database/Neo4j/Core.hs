@@ -36,7 +36,7 @@ data Connection = Connection
 -- Use 'runNeo4j' to run 'Neo4j' statements and evaluate their results.
 newtype Neo4j a = Neo4j {
     runNeo :: ReaderT Connection (EitherT Neo4jError IO) a
-    } deriving (Monad, MonadIO, Functor, Applicative)
+    } deriving (Monad, MonadIO, MonadReader Connection, Functor, Applicative)
 
 -- | Something terrible happened.
 data Neo4jException =
@@ -118,7 +118,7 @@ authenticate req = do
 --     liftIO $ print (n1 :: Node User)
 --     createRelationship n1 n2 \"FRIEND_OF\" Nothing
 -- @
-runNeo4j :: (FromJSON a) => Connection -> Neo4j a -> IO (Either Neo4jError a)
+runNeo4j :: FromJSON a => Connection -> Neo4j a -> IO (Either Neo4jError a)
 runNeo4j conn request = runEitherT $ runReaderT (runNeo request) conn
 
 -- | Create a connection pool to the Neo4j server. 'connect' will automatically

@@ -8,6 +8,7 @@ module Database.Neo4j.Node
     ) where
 
 import Control.Monad.Reader
+import Control.Monad.Trans.Either
 import Data.Aeson
 import Data.Aeson.Types
 -- import Data.Aeson.Encode.ByteString
@@ -36,23 +37,29 @@ instance FromJSON a => FromJSON (Node a) where
     parseJSON _ = mzero
 
 -- | Fetch a 'Node' by Neo4j node ID.
-getNode :: FromJSON a => Integer -> Neo4j (Either Neo4jError (Node a))
-getNode node = Neo4j $ do
+getNode :: FromJSON a => Integer -> Neo4j (Node a)
+getNode node = do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let req' = req { path = mconcat ["db/data/node/", BC.pack $ show node] }
-    liftIO $ sendRequest req' manager
+    res <- liftIO $ sendRequest req' manager
+    case res of
+        Left err -> Neo4j . lift $ left err
+        Right node' -> return node'
 
 -- | Create a 'Node' with optional properties.
 createNode :: (ToJSON a, FromJSON a)
            => a
-           -> Neo4j (Either Neo4jError (Node a))
-createNode props = Neo4j $ do
+           -> Neo4j (Node a)
+createNode props = do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let req' = req { path = "db/data/node"
                    , method = "POST" }
-    liftIO $ sendRequest (applyBody req' props) manager
+    res <- liftIO $ sendRequest (applyBody req' props) manager
+    case res of
+        Left err -> Neo4j . lift $ left err
+        Right node' -> return node'
 
 -- TODO FIX THIS SHIT
 applyBody :: (ToJSON a, FromJSON a) => Request -> a -> Request
@@ -63,10 +70,13 @@ applyBody r n = if j == emptyObject then r else r'
         r' = r { requestBody = RequestBodyLBS $ encodeValue j }
 
 -- | Delete a 'Node' by Neo4j node ID.
-deleteNode :: Integer -> Neo4j (Either Neo4jError ())
-deleteNode node = Neo4j $ do
+deleteNode :: Integer -> Neo4j ()
+deleteNode node = do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let req' = req { path = mconcat ["db/data/node/", BC.pack $ show node]
                    , method = "DELETE" }
-    liftIO $ sendRequest req' manager
+    res <- liftIO $ sendRequest req' manager
+    case (res :: Either Neo4jError Value) of
+        Left err -> Neo4j . lift $ left err
+        Right _ -> return ()

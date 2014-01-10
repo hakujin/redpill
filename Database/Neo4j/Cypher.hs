@@ -11,6 +11,7 @@ module Database.Neo4j.Cypher
 
 import Control.Exception (throw)
 import Control.Monad.Reader
+import Control.Monad.Trans.Either
 import Data.Aeson (encode)
 import Data.Aeson.Types
 import Data.Aeson.TH
@@ -41,7 +42,7 @@ data CypherResponse a = CypherResponse
 $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 9 } ''CypherResponse)
 
-readQuery :: FilePath -> IO ([Pair] -> Neo4j (Either Neo4jError [[Value]]))
+readQuery :: FilePath -> IO ([Pair] -> Neo4j [[Value]])
 readQuery f = do
     q <- TIO.readFile f
     return $ query q
@@ -68,8 +69,8 @@ fromRelationship = relationshipProperties . fromCypher
 
 -- | Execute a cypher query against the Neo4j database. Use 'fromCypher' or
 -- 'safeFromCypher' to decode returned values into useful types.
-query :: T.Text -> [Pair] -> Neo4j (Either Neo4jError [[Value]])
-query cypher params = Neo4j $ do
+query :: T.Text -> [Pair] -> Neo4j [[Value]]
+query cypher params = do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let body = encode CypherRequest { _requestQuery = cypher
@@ -78,9 +79,9 @@ query cypher params = Neo4j $ do
                    , method = "POST"
                    , requestBody = RequestBodyLBS body }
     res <- liftIO $ sendRequest req' manager
-    return $ case res of
-        Left err -> Left err
-        Right (CypherResponse _ d) -> Right d
+    case res of
+        Left err -> Neo4j . lift $ left err
+        Right (CypherResponse _ d) -> return d
     where
         convertParams :: [Pair] -> Value
         convertParams []= emptyObject
