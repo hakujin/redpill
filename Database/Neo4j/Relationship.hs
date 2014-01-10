@@ -7,7 +7,6 @@ module Database.Neo4j.Relationship
     , getRelationship
     ) where
 
-import Control.Exception
 import Control.Monad.Reader
 import Data.Aeson
 import Data.Aeson.TH
@@ -16,7 +15,6 @@ import Data.Monoid
 import Database.Neo4j.Core
 import Database.Neo4j.Node
 import Network.HTTP.Conduit
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Text as T
 
@@ -24,10 +22,10 @@ import qualified Data.Text as T
 -- FromJSON instances.
 data Relationship a = Relationship
     { relationshipId :: Integer
-    , relationshipSelf :: B.ByteString
-    , relationshipType :: B.ByteString
-    , relationshipStart :: B.ByteString
-    , relationshipEnd :: B.ByteString
+    , relationshipSelf :: T.Text
+    , relationshipType :: T.Text
+    , relationshipStart :: T.Text
+    , relationshipEnd :: T.Text
     , relationshipProperties :: a } deriving (Show, Eq)
 
 instance FromJSON a => FromJSON (Relationship a) where
@@ -38,22 +36,16 @@ instance FromJSON a => FromJSON (Relationship a) where
         relStart <- r .: "start"
         relEnd <- r .: "end"
         return Relationship
-            { relationshipId = getId relSelf
+            { relationshipId = parseId relSelf
             , relationshipSelf = relSelf
             , relationshipType = relType
             , relationshipStart = relStart
             , relationshipEnd = relEnd
             , relationshipProperties = relProps }
-        where
-            getId :: B.ByteString -> Integer
-            getId b =
-                case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
-                    Nothing -> throw ClientParseException
-                    Just (i, _) -> i
     parseJSON _ = mzero
 
 data RelationshipRequest a = RelationshipRequest
-    { _requestTo :: B.ByteString
+    { _requestTo :: T.Text
     , _requestType :: T.Text
     , _requestData :: Maybe a } deriving (Show, Eq)
 

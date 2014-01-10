@@ -61,6 +61,7 @@ module Database.Neo4j (
     , getNode
     , getRelationship
     , query
+    , readQuery
     , runNeo4j
     , safeFromCypher
     , simpleNeo4j

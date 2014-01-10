@@ -4,6 +4,7 @@ module Database.Neo4j.Cypher
     ( fromCypher
     , fromNode
     , fromRelationship
+    , readQuery
     , query
     , safeFromCypher
     ) where
@@ -19,11 +20,12 @@ import Database.Neo4j.Core
 import Database.Neo4j.Node
 import Database.Neo4j.Relationship
 import Network.HTTP.Conduit
-import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 
 -- Cypher request data to be sent to Neo4j
 data CypherRequest = CypherRequest
-    { _requestQuery :: Text
+    { _requestQuery :: T.Text
     , _requestParams :: Value
     } deriving (Show, Eq)
 
@@ -32,12 +34,17 @@ $(deriveJSON defaultOptions
 
 -- Cypher response data returned by Neo4j
 data CypherResponse a = CypherResponse
-    { _responseColumns :: [Text]
+    { _responseColumns :: [T.Text]
     , _responseData :: [[a]]
     } deriving (Show, Eq)
 
 $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 9 } ''CypherResponse)
+
+readQuery :: FilePath -> IO ([Pair] -> Neo4j (Either Neo4jError [[Value]]))
+readQuery f = do
+    q <- TIO.readFile f
+    return $ query q
 
 -- | Convert returned cypher data from 'Value' to some instance of FromJSON.
 -- Throws 'ClientParseException' on invalid target.
@@ -61,7 +68,7 @@ fromRelationship = relationshipProperties . fromCypher
 
 -- | Execute a cypher query against the Neo4j database. Use 'fromCypher' or
 -- 'safeFromCypher' to decode returned values into useful types.
-query :: Text -> Maybe [Pair] -> Neo4j (Either Neo4jError [[Value]])
+query :: T.Text -> [Pair] -> Neo4j (Either Neo4jError [[Value]])
 query cypher params = Neo4j $ do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -75,5 +82,6 @@ query cypher params = Neo4j $ do
         Left err -> Left err
         Right (CypherResponse _ d) -> Right d
     where
-        convertParams :: Maybe [Pair] -> Value
-        convertParams = maybe emptyObject object
+        convertParams :: [Pair] -> Value
+        convertParams []= emptyObject
+        convertParams p = object p

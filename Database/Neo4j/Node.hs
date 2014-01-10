@@ -7,20 +7,22 @@ module Database.Neo4j.Node
     , getNode
     ) where
 
-import Control.Exception
 import Control.Monad.Reader
 import Data.Aeson
+import Data.Aeson.Types
+-- import Data.Aeson.Encode.ByteString
 import Data.Monoid
 import Database.Neo4j.Core
 import Network.HTTP.Conduit
-import qualified Data.ByteString as B
+import qualified Data.Text as T
+-- import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Char8 as BC
 
 -- | A Neo4j node wrapper around a Haskell data type with ToJSON and
 -- FromJSON instances.
 data Node a = Node
     { nodeId :: Integer
-    , nodeSelf :: B.ByteString
+    , nodeSelf :: T.Text
     , nodeProperties :: a } deriving (Show, Eq)
 
 instance FromJSON a => FromJSON (Node a) where
@@ -28,15 +30,9 @@ instance FromJSON a => FromJSON (Node a) where
         self <- n .: "self"
         props <- n .: "data"
         return Node
-            { nodeId = getId self
-            , nodeSelf =  self
+            { nodeId = parseId self
+            , nodeSelf = self
             , nodeProperties = props }
-        where
-            getId :: B.ByteString -> Integer
-            getId b =
-                case BC.readInteger . snd $ BC.spanEnd (/= '/') b of
-                    Nothing -> throw ClientParseException
-                    Just (i, _) -> i
     parseJSON _ = mzero
 
 -- | Fetch a 'Node' by Neo4j node ID.
@@ -49,7 +45,7 @@ getNode node = Neo4j $ do
 
 -- | Create a 'Node' with optional properties.
 createNode :: (ToJSON a, FromJSON a)
-           => Maybe a
+           => a
            -> Neo4j (Either Neo4jError (Node a))
 createNode props = Neo4j $ do
     manager <- asks connectionManager
@@ -58,8 +54,13 @@ createNode props = Neo4j $ do
                    , method = "POST" }
     liftIO $ sendRequest (applyBody req' props) manager
 
-applyBody :: ToJSON a => Request -> Maybe a -> Request
-applyBody r = maybe r (\x -> r { requestBody = RequestBodyLBS $ encode x })
+-- TODO FIX THIS SHIT
+applyBody :: (ToJSON a, FromJSON a) => Request -> a -> Request
+applyBody r n = if j == emptyObject then r else r'
+    where
+        j = toJSON n
+        encodeValue = encode --TLE.encodeUtf8 . TLB.toLazyText . encodeToTextBuilder
+        r' = r { requestBody = RequestBodyLBS $ encodeValue j }
 
 -- | Delete a 'Node' by Neo4j node ID.
 deleteNode :: Integer -> Neo4j (Either Neo4jError ())

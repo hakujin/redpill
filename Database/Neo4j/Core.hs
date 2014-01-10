@@ -8,6 +8,7 @@ module Database.Neo4j.Core
     , Neo4jError(..)
     , authenticate
     , connect
+    , parseId
     , runNeo4j
     , sendRequest
     , simpleNeo4j
@@ -17,8 +18,10 @@ import Control.Applicative
 import Control.Exception
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Either
 import Data.Aeson
 import Data.Typeable
+import Data.Text.Read (decimal)
 import Network.HTTP.Conduit
 import Network.HTTP.Types
 import System.Environment (lookupEnv)
@@ -31,8 +34,9 @@ data Connection = Connection
 
 -- | All interaction with Neo4j is done through the 'Neo4j' monad.
 -- Use 'runNeo4j' to run 'Neo4j' statements and evaluate their results.
-newtype Neo4j a = Neo4j (ReaderT Connection IO a)
-    deriving (Monad, MonadIO, Functor, Applicative)
+newtype Neo4j a = Neo4j {
+    runNeo :: ReaderT Connection (EitherT Neo4jError IO) a
+    } deriving (Monad, MonadIO, Functor, Applicative)
 
 -- | Something terrible happened.
 data Neo4jException =
@@ -72,6 +76,12 @@ neo4jUserEnv = "NEO4J_LOGIN"
 neo4jPasswordEnv :: String
 neo4jPasswordEnv = "NEO4J_PASSWORD"
 
+parseId :: T.Text -> Integer
+parseId b =
+    case decimal . snd $ T.breakOnEnd "/" b of
+        Left _ -> throw ClientParseException
+        Right (i, _) -> i
+
 sendRequest :: FromJSON a => Request -> Manager -> IO (Either Neo4jError a)
 sendRequest request manager = do
     res <- onException (httpLbs request manager)
@@ -108,8 +118,8 @@ authenticate req = do
 --     liftIO $ print (n1 :: Node User)
 --     createRelationship n1 n2 \"FRIEND_OF\" Nothing
 -- @
-runNeo4j :: FromJSON a => Connection -> Neo4j a -> IO a
-runNeo4j conn (Neo4j request) = runReaderT request conn
+runNeo4j :: (FromJSON a) => Connection -> Neo4j a -> IO (Either Neo4jError a)
+runNeo4j conn request = runEitherT $ runReaderT (runNeo request) conn
 
 -- | Create a connection pool to the Neo4j server. 'connect' will automatically
 -- use the NEO4J_LOGIN and NEO4J_PASSWORD environment variables for
@@ -142,7 +152,7 @@ connect url =
 -- @
 -- node <- simpleNeo4j \"http://localhost:7474\" (getNode 1)
 -- @
-simpleNeo4j :: FromJSON a => String -> Neo4j a -> IO a
+simpleNeo4j :: (FromJSON a) => String -> Neo4j a -> IO (Either Neo4jError a)
 simpleNeo4j url f = do
     connection <- connect url
     runNeo4j connection f
