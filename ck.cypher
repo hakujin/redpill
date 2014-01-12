@@ -1,1 +1,1 @@
-match (u:Person {name:{NAME}}) return u.from
+match (u:user {name:{NAME}}) return u.email

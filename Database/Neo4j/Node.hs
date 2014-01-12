@@ -11,12 +11,10 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Either
 import Data.Aeson
 import Data.Aeson.Types
--- import Data.Aeson.Encode.ByteString
 import Data.Monoid
 import Database.Neo4j.Core
 import Network.HTTP.Conduit
 import qualified Data.Text as T
--- import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Char8 as BC
 
 -- | A Neo4j node wrapper around a Haskell data type with ToJSON and
@@ -48,9 +46,7 @@ getNode node = do
         Right node' -> return node'
 
 -- | Create a 'Node' with optional properties.
-createNode :: (ToJSON a, FromJSON a)
-           => a
-           -> Neo4j (Node a)
+createNode :: (ToJSON a, FromJSON a) => a -> Neo4j (Node a)
 createNode props = do
     manager <- asks connectionManager
     req <- asks connectionRequest
@@ -61,13 +57,13 @@ createNode props = do
         Left err -> Neo4j . lift $ left err
         Right node' -> return node'
 
--- TODO FIX THIS SHIT
+-- TODO: this toJSON encodes twice, but lets aeson deal with the new
+-- 10.0.4.0 bytestring improvements. potential to optimize here.
 applyBody :: (ToJSON a, FromJSON a) => Request -> a -> Request
-applyBody r n = if j == emptyObject then r else r'
-    where
-        j = toJSON n
-        encodeValue = encode --TLE.encodeUtf8 . TLB.toLazyText . encodeToTextBuilder
-        r' = r { requestBody = RequestBodyLBS $ encodeValue j }
+applyBody r n =
+    if toJSON n == emptyObject
+        then r
+        else r { requestBody = RequestBodyLBS $ encode n }
 
 -- | Delete a 'Node' by Neo4j node ID.
 deleteNode :: Integer -> Neo4j ()

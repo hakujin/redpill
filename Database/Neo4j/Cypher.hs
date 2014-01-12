@@ -42,6 +42,35 @@ data CypherResponse a = CypherResponse
 $(deriveJSON defaultOptions
     { fieldLabelModifier = map toLower . drop 9 } ''CypherResponse)
 
+-- | Reads a cypher statement from a file and returns a function that, when
+-- evaluated inside a 'runNeo4j' block, will execute the given cypher statement.
+-- This is the preferred method of running cypher statements as it keeps the
+-- code separate, easy to refactor, and portable.
+-- Throws 'IOException' on failure.
+--
+-- @
+-- ...
+-- main = do
+--     connection <- 'connect' \"http://localhost:7474\"
+--     -- get_users.cypher: MATCH (n:Users) RETURN n
+--     getUsers <- 'readQuery' \"cypher/get_users.cypher\"
+--     -- get_user_email.cypher: MATCH (n:Users {name:{NAME}}) RETURN n.email
+--     getUserEmail <- 'readQuery' \"cypher/get_user_email.cypher\"
+--     res <- 'runNeo4j' connection $ do
+--         users <- getUsers []
+--         johnEmail <- getUserEmail [(\"NAME\", \"John\")]
+--         return (users, johnEmail)
+--     case res of
+--         Left err -> print err
+--         Right (u, j) -> do
+--             mapM_ (print . convUser) u
+--             -- assuming one User named \"John\"
+--             putStrLn . 'fromCypher' . head $ head j
+--     where
+--         convUser :: ['Value'] -> 'Node' User
+--         convUser [u] = 'fromNode' u
+--         convUser _ = error \"I didn't match the query return statement.\"
+-- @
 readQuery :: FilePath -> IO ([Pair] -> Neo4j [[Value]])
 readQuery f = do
     q <- TIO.readFile f
@@ -58,12 +87,12 @@ safeFromCypher :: FromJSON a => Value -> Either String a
 safeFromCypher = parseEither parseJSON
 
 -- | Convert returned cypher 'Node' properties directly into a Haskell data
--- type. This is synonymous with @nodeProperties . fromCypher@
+-- type. This is synonymous with @'nodeProperties' . 'fromCypher'@
 fromNode :: FromJSON a => Value -> a
 fromNode = nodeProperties . fromCypher
 
 -- | Convert returned cypher 'Relationship' properties directly into a Haskell
--- data type. This is synonymous with @relationshipProperties . fromCypher@
+-- data type. This is synonymous with @'relationshipProperties' . 'fromCypher'@
 fromRelationship :: FromJSON a => Value -> a
 fromRelationship = relationshipProperties . fromCypher
 

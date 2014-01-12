@@ -68,11 +68,11 @@ getRelationship rel = do
 -- | Create a 'Relationship' with optional properties.
 createRelationship :: (ToJSON c, FromJSON c)
                    => Node a -- ^ From
-                   -> Node b -- ^ To
                    -> T.Text -- ^ Type
+                   -> Node b -- ^ To
                    -> Maybe c -- ^ Properties
                    -> Neo4j (Relationship c)
-createRelationship from to relType props = do
+createRelationship from relType to props = do
     manager <- asks connectionManager
     req <- asks connectionRequest
     let body = encode RelationshipRequest { _requestTo = nodeSelf to

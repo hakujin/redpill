@@ -49,7 +49,7 @@ data Neo4jException =
                     -- | Occurs when you feed 'connect' or 'simpleNeo4j' an
                     -- invalid URL.
                     | InvalidURLException
-                    -- | Occurs when the Neo4j server is unreachable.
+                    -- | Occurs when the Neo4j server is down/unreachable.
                     | ServerUnreachableException
                     deriving (Show, Typeable)
 
@@ -76,6 +76,7 @@ neo4jUserEnv = "NEO4J_LOGIN"
 neo4jPasswordEnv :: String
 neo4jPasswordEnv = "NEO4J_PASSWORD"
 
+-- parses ID from Neo4j entity url
 parseId :: T.Text -> Integer
 parseId b =
     case decimal . snd $ T.breakOnEnd "/" b of

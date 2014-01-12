@@ -15,14 +15,14 @@ module Database.Neo4j (
 -- $(deriveJSON defaultOptions ''User)
 -- ...
 -- 'runNeo4j' conn $ do
---     Right john <- 'createNode' . Just $ User \"John Smith\" 42
---     Right jane <- 'createNode' . Just $ User \"Jane Doe\" 37
---     Right james <- 'createNode' . Just $ User \"James Jones\" 29
---     'createRelationship' jane john \"LOVES\" Nothing
---     'createRelationship' john jane \"LIKES\" Nothing
---     'createRelationship' james jane \"LOVES\" Nothing
---     Right rel <- 'createRelationship' james john \"DISLIKES\" $
---         Just [(\"amount\", \"a lot!\")]
+--     john <- 'createNode' $ User \"John Smith\" 42
+--     jane <- 'createNode' $ User \"Jane Doe\" 37
+--     james <- 'createNode' $ User \"James Jones\" 29
+--     'createRelationship' jane \"LOVES\" john Empty
+--     'createRelationship' john \"LIKES\" jane Empty
+--     'createRelationship' james \"LOVES\" jane Empty
+--     rel <- 'createRelationship' james \"ENVIOUS_OF\" john $
+--         [(\"amount\", \"very\")]
 --     liftIO . print $ 'nodeProperties' john
 --     liftIO . print $ (rel :: 'Relationship' 'Value')
 -- @
@@ -32,15 +32,15 @@ module Database.Neo4j (
 -- @
 -- ...
 -- -- assuming existing User nodes
--- 'runNeo4j' conn $ do
---     res <- 'query' \"match (n:User) return n, n.name, n.age\" Nothing
---     case res of
---         Left err -> liftIO $ print err
---         Right res' -> mapM_ (liftIO . print) (map convRow res')
---     where
---         convRow :: ['Value'] -> (User, String, Int)
---         convRow [u, n, a] = ('fromNode' u, 'fromCypher' n, 'fromCypher' a)
---         convRow _ = error \"didn't match query return values\"
+-- res <- runNeo4j' conn $
+--     'query' \"MATCH (n:User) RETURN n, n.name, n.age\" []
+-- case res of
+--     Left err -> print err
+--     Right res' -> mapM_ (print . convRow) res'
+-- where
+--     convRow :: ['Value'] -> (User, String, Int)
+--     convRow [u, n, a] = ('fromNode' u, 'fromCypher' n, 'fromCypher' a)
+--     convRow _ = error \"didn't match query return statement\"
 -- @
 
     Connection
