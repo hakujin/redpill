@@ -59,17 +59,19 @@ $(deriveJSON defaultOptions
 --     res <- 'runNeo4j' connection $ do
 --         users <- getUsers []
 --         johnEmail <- getUserEmail [(\"NAME\", \"John\")]
---         return (users, johnEmail)
+--         charlesEmail <- getUserEmail [(\"NAME\", \"Charles\")]
+--         return (users, johnEmail, charlesEmail)
 --     case res of
 --         Left err -> print err
---         Right (u, j) -> do
+--         Right (u, j, c) -> do
 --             mapM_ (print . convUser) u
---             -- assuming one User named \"John\"
+--             -- assuming one User named \"John\" and one named \"Charles\"
 --             putStrLn . 'fromCypher' . head $ head j
+--             putStrLn . 'fromCypher' . head $ head c
 --     where
 --         convUser :: ['Value'] -> 'Node' User
---         convUser [u] = 'fromNode' u
---         convUser _ = error \"I didn't match the query return statement.\"
+--         convUser [u] = 'fromCypher' u
+--         convUser _ = error \"didn't match the query return statement.\"
 -- @
 readQuery :: FilePath -> IO ([Pair] -> Neo4j [[Value]])
 readQuery f = do
@@ -113,5 +115,5 @@ query cypher params = do
         Right (CypherResponse _ d) -> return d
     where
         convertParams :: [Pair] -> Value
-        convertParams []= emptyObject
+        convertParams [] = emptyObject
         convertParams p = object p

@@ -34,17 +34,15 @@ data Connection = Connection
 
 -- | All interaction with Neo4j is done through the 'Neo4j' monad.
 -- Use 'runNeo4j' to run 'Neo4j' statements and evaluate their results.
-newtype Neo4j a = Neo4j {
-    runNeo :: ReaderT Connection (EitherT Neo4jError IO) a
-    } deriving (Monad, MonadIO, MonadReader Connection, Functor, Applicative)
+newtype Neo4j a = Neo4j (ReaderT Connection (EitherT Neo4jError IO) a)
+    deriving (Monad, MonadIO, MonadReader Connection, Functor, Applicative)
 
 -- | Something terrible happened.
 data Neo4jException =
                     -- | Occurs when aeson can't parse the returned JSON into
                     -- the data type you specified - e.g. the returned JSON
                     -- represents a Node User and you attempted to decode it
-                    -- into a Relationship Giraffe. (what is wrong with you
-                    -- aeson leave the giraffe alone)
+                    -- into a Relationship Giraffe.
                     ClientParseException
                     -- | Occurs when you feed 'connect' or 'simpleNeo4j' an
                     -- invalid URL.
@@ -117,15 +115,16 @@ authenticate req = do
 --     n1 <- getNode 1
 --     n2 <- getNode 2
 --     liftIO $ print (n1 :: Node User)
---     createRelationship n1 n2 \"FRIEND_OF\" Nothing
+--     createRelationship n1 \"FRIEND_OF\" n2 Empty
 -- @
 runNeo4j :: FromJSON a => Connection -> Neo4j a -> IO (Either Neo4jError a)
-runNeo4j conn request = runEitherT $ runReaderT (runNeo request) conn
+runNeo4j conn (Neo4j request) = runEitherT $ runReaderT request conn
 
 -- | Create a connection pool to the Neo4j server. 'connect' will automatically
 -- use the NEO4J_LOGIN and NEO4J_PASSWORD environment variables for
 -- authentication if defined. This function is relatively expensive and should
--- be called once then reused among multiple 'runNeo4j' instances.
+-- be called once then reused among multiple 'runNeo4j' instances. Throws
+-- 'InvalidURLException' on invalid URL.
 --
 -- @
 -- connection <- connect \"http://localhost:7474\"

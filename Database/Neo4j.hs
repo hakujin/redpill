@@ -32,7 +32,7 @@ module Database.Neo4j (
 -- @
 -- ...
 -- -- assuming existing User nodes
--- res <- runNeo4j' conn $
+-- res <- 'runNeo4j' conn $
 --     'query' \"MATCH (n:User) RETURN n, n.name, n.age\" []
 -- case res of
 --     Left err -> print err
@@ -48,6 +48,7 @@ module Database.Neo4j (
     , Neo4jException(..)
     , Neo4jError(..)
     , Node(..)
+    , Pair
     , Relationship(..)
     , Value
     , connect
